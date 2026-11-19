@@ -166,3 +166,14 @@ describe("pickBestPhoneMatch", () => {
     ).toBeNull();
   });
 });
+
+describe('DRM Mexico contact deduplication', () => {
+  it('deduplicates CSV contacts across 52 and 521 without changing other numbers', () => {
+    const result = dedupeByPhone([
+      { phone: '+527770000001' }, { phone: '+5217770000001' }, { phone: '+527770000002' },
+    ]);
+    expect(result.duplicates).toBe(1);
+    expect(result.unique).toHaveLength(2);
+    expect(isExactMatch({ id: 'contact-a', phone: '5217770000001' }, '527770000001')).toBe(true);
+  });
+});

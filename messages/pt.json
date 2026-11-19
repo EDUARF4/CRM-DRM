@@ -382,6 +382,7 @@
       "sendTemplateFailed": "Falha ao enviar o modelo: {reason}",
       "waitForSending": "Aguarde a mensagem terminar de ser enviada",
       "reactionFailed": "Falha na reação: {reason}",
+      "assignmentChanged": "Outro agente alterou a atribuição. Atualize a conversa antes de tentar novamente.",
       "assignmentUpdateFailed": "Falha ao atualizar a atribuição",
       "assigneeNoLongerMember": "Esse colega não é mais membro desta conta",
       "networkError": "erro de rede",

@@ -1,5 +1,6 @@
 "use client";
 
+import { sendInboxRequest } from "@/lib/inbox/send-request";
 import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
@@ -61,7 +62,7 @@ import {
   templateNamesInMessages,
 } from "@/lib/whatsapp/template-message-view";
 import { contactHandle } from "@/lib/whatsapp/wa-identity";
-import { resolveAssignmentResult } from "@/lib/inbox/assignment";
+import { compareAndAssign, resolveAssignmentResult } from "@/lib/inbox/assignment";
 import {
   businessReactionOn,
   withBusinessReaction,
@@ -594,16 +595,12 @@ export function MessageThread({
       setReplyTo(null);
 
       try {
-        const res = await fetch("/api/whatsapp/send", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
+        const res = await sendInboxRequest({
             conversation_id: conversation.id,
             message_type: "text",
             content_text: text,
             reply_to_message_id: replyToId,
-          }),
-        });
+          });
 
         const payload = await res.json().catch(() => ({}));
 
@@ -658,18 +655,14 @@ export function MessageThread({
       setReplyTo(null);
 
       try {
-        const res = await fetch("/api/whatsapp/send", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
+        const res = await sendInboxRequest({
             conversation_id: conversation.id,
             message_type: payload.kind,
             media_url: payload.mediaUrl,
             content_text: contentText,
             filename: payload.filename,
             reply_to_message_id: payload.replyToId,
-          }),
-        });
+          });
 
         const data = await res.json().catch(() => ({}));
 
@@ -717,16 +710,12 @@ export function MessageThread({
       onNewMessage(optimisticMsg);
 
       try {
-        const res = await fetch("/api/whatsapp/send", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
+        const res = await sendInboxRequest({
             conversation_id: conversation.id,
             message_type: "interactive",
             interactive_payload: payload,
             reply_to_message_id: replyToId,
-          }),
-        });
+          });
 
         const data = await res.json().catch(() => ({}));
 
@@ -796,10 +785,7 @@ export function MessageThread({
       onNewMessage(optimisticMsg);
 
       try {
-        const res = await fetch("/api/whatsapp/send", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
+        const res = await sendInboxRequest({
             conversation_id: conversation.id,
             message_type: "template",
             template_name: template.name,
@@ -815,8 +801,7 @@ export function MessageThread({
             },
             template_params: values.body,
             content_text: renderedBody,
-          }),
-        });
+          });
 
         const payload = await res.json().catch(() => ({}));
 
@@ -943,12 +928,13 @@ export function MessageThread({
       if (!conversation) return;
 
       const supabase = createClient();
-      const { data, error } = await supabase
-        .from("conversations")
-        .update({ assigned_agent_id: agentId })
-        .eq("id", conversation.id)
-        .select("assigned_agent_id")
-        .single();
+      const { data, error } = await compareAndAssign(
+        supabase, conversation.id, conversation.assigned_agent_id ?? null, agentId,
+      );
+      if (!error && !data) {
+        toast.error(t("assignmentChanged"));
+        return;
+      }
 
       if (error) {
         console.error("Failed to update assignment:", error);

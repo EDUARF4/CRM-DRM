@@ -5,7 +5,13 @@
  */
 export function sanitizePhoneForMeta(phone: string): string {
   if (!phone) return ''
-  return phone.replace(/\D/g, '')
+  return canonicalPhone(phone)
+}
+
+/** Only Mexico's legacy 521 + ten national digits is an alias of 52. */
+export function canonicalPhone(phone: string): string {
+  const digits = (phone || '').replace(/\D/g, '')
+  return /^521\d{10}$/.test(digits) ? '52' + digits.slice(3) : digits
 }
 
 /**
@@ -22,8 +28,8 @@ export function normalizePhone(phone: string): string {
  * e.g. "370063949836" (with trunk 0) matches "37063949836" (without trunk 0)
  */
 export function phonesMatch(phone1: string, phone2: string): boolean {
-  const n1 = normalizePhone(phone1)
-  const n2 = normalizePhone(phone2)
+  const n1 = canonicalPhone(phone1)
+  const n2 = canonicalPhone(phone2)
   if (n1 === n2) return true
   return isTrunkZeroVariant(n1, n2)
 }
@@ -82,7 +88,7 @@ export function parseInternationalPhone(raw: string | null | undefined): string 
   if (!compact.startsWith('+')) return null
   const digits = compact.slice(1)
   if (!/^\d+$/.test(digits)) return null
-  return isValidE164(digits) ? digits : null
+  return isValidE164(digits) ? canonicalPhone(digits) : null
 }
 
 /**
@@ -115,6 +121,10 @@ export function phoneVariants(sanitized: string): string[] {
 
   // 1. Original
   push(sanitized)
+
+  // Try Mexico's exact known alias before speculative trunk variants.
+  if (/^521\d{10}$/.test(sanitized)) push(canonicalPhone(sanitized))
+  if (/^52\d{10}$/.test(sanitized)) push('521' + sanitized.slice(2))
 
   // 2. Insert a 0 after each plausible country-code length
   for (const ccLen of [1, 2, 3]) {

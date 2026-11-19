@@ -382,6 +382,7 @@
       "sendTemplateFailed": "Error al enviar la plantilla: {reason}",
       "waitForSending": "Espera a que el mensaje termine de enviarse",
       "reactionFailed": "Error en la reacción: {reason}",
+      "assignmentChanged": "Otro agente cambió la asignación. Actualiza la conversación antes de volver a intentar.",
       "assignmentUpdateFailed": "Error al actualizar la asignación",
       "assigneeNoLongerMember": "Ese compañero ya no es miembro de esta cuenta",
       "networkError": "error de red",

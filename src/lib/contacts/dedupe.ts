@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   normalizePhone,
+  canonicalPhone,
   parseInternationalPhone,
   phonesMatch,
   phoneVariants,
@@ -19,7 +20,7 @@ import {
 
 /** Canonical de-dup key for a phone string (digits only). */
 export function normalizeKey(phone: string): string {
-  return normalizePhone(phone);
+  return canonicalPhone(phone);
 }
 
 /** Minimal shape we need back from a contacts lookup. */

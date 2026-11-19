@@ -122,6 +122,7 @@ export async function POST(request: Request) {
       ctx.accountId,
       {
         conversationId: resolved.conversationId,
+        requestId: request.headers.get('Idempotency-Key'),
         messageType: type,
         contentText: typeof body.text === 'string' ? body.text : null,
         mediaUrl: typeof body.media_url === 'string' ? body.media_url : null,
