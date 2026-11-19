@@ -259,3 +259,10 @@ describe('contactHandle', () => {
     expect(contactHandle({ phone: null, wa_username: null, wa_user_id: null })).toBe('')
   })
 })
+
+describe('DRM inbound phone canonicalization', () => {
+  it('stores Mexico legacy webhook identities as 52 before resolving a contact', () => {
+    expect(resolveInboundIdentity({ from: '5217770000001' }).phone).toBe('527770000001');
+    expect(resolveInboundIdentity({}, { wa_id: '5217770000001' }).phone).toBe('527770000001');
+  });
+});

@@ -252,3 +252,21 @@ describe("isRecipientNotAllowedError", () => {
     expect(isRecipientNotAllowedError("")).toBe(false);
   });
 });
+
+describe('DRM Mexico aliases', () => {
+  it('compares 52 and the exact legacy 521 format in both directions', () => {
+    expect(phonesMatch('527770000001', '5217770000001')).toBe(true);
+    expect(phonesMatch('+52 1 777 000 0001', '+52 777 000 0001')).toBe(true);
+    expect(phonesMatch('527770000001', '5217770000002')).toBe(false);
+  });
+  it('sends and parses Mexico numbers in the 52 form', () => {
+    expect(sanitizePhoneForMeta('+52 1 777 000 0001')).toBe('527770000001');
+    expect(parseInternationalPhone('+52 1 777 000 0001')).toBe('527770000001');
+  });
+  it('looks up both stored formats without affecting other countries or wrong lengths', () => {
+    expect(phoneVariants('527770000001')[1]).toBe('5217770000001');
+    expect(phoneVariants('5217770000001')[1]).toBe('527770000001');
+    expect(sanitizePhoneForMeta('521777000000')).toBe('521777000000');
+    expect(sanitizePhoneForMeta('5491100000001')).toBe('5491100000001');
+  });
+});

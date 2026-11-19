@@ -29,7 +29,7 @@
 
 import {
   isValidE164,
-  normalizePhone,
+  canonicalPhone,
   sanitizePhoneForMeta,
 } from './phone-utils'
 
@@ -111,7 +111,7 @@ export function resolveInboundIdentity(
   contact?: WaContactPayload
 ): WaIdentity {
   return {
-    phone: normalizePhone(message.from ?? contact?.wa_id ?? ''),
+    phone: canonicalPhone(message.from ?? contact?.wa_id ?? ''),
     waUserId: cleanBsuid(message.from_user_id) ?? cleanBsuid(contact?.user_id),
     waParentUserId:
       cleanBsuid(message.from_parent_user_id) ??

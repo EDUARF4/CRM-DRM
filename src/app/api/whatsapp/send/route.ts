@@ -159,6 +159,7 @@ export async function POST(request: Request) {
     try {
       const result = await sendMessageToConversation(supabase, accountId, {
         conversationId,
+        requestId: request.headers.get('Idempotency-Key'),
         messageType: message_type,
         contentText: content_text,
         mediaUrl: media_url,

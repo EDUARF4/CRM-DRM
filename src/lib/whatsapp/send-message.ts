@@ -19,9 +19,11 @@
 // without duplicating ~250 lines of Meta plumbing.
 // ============================================================
 
+import { claimSend, completeSend, releaseRejectedSend } from './send-dedup';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import {
+  MetaApiError,
   sendTextMessage,
   sendTemplateMessage,
   sendMediaMessage,
@@ -63,16 +65,8 @@ export const VALID_MESSAGE_TYPES = [
  * Callers map it to their own response shape (`toErrorResponse` for
  * the dashboard route, the v1 envelope for the public endpoint).
  */
-export class SendMessageError extends Error {
-  readonly code: string;
-  readonly status: number;
-  constructor(code: string, message: string, status: number) {
-    super(message);
-    this.name = 'SendMessageError';
-    this.code = code;
-    this.status = status;
-  }
-}
+export { SendMessageError } from './send-error';
+import { SendMessageError } from './send-error';
 
 export interface SendMessageParams {
   conversationId: string;
@@ -90,6 +84,7 @@ export interface SendMessageParams {
   interactivePayload?: InteractiveMessagePayload | null;
   replyToMessageId?: string | null;
   senderId?: string | null;
+  requestId?: string | null;
 }
 
 export interface SendMessageResult {
@@ -121,8 +116,13 @@ export function validateSendMessageParams(params: {
   templateName?: string | null;
   interactivePayload?: InteractiveMessagePayload | null;
 }): void {
-  const { messageType, contentText, mediaUrl, templateName, interactivePayload } =
-    params;
+  const {
+    messageType,
+    contentText,
+    mediaUrl,
+    templateName,
+    interactivePayload,
+  } = params;
 
   if (!messageType) {
     throw new SendMessageError('bad_request', 'message_type is required', 400);
@@ -234,6 +234,18 @@ export async function sendMessageToConversation(
 
   if (convError || !conversation) {
     throw new SendMessageError('not_found', 'Conversation not found', 404);
+  }
+
+  if (
+    senderId &&
+    conversation.assigned_agent_id &&
+    conversation.assigned_agent_id !== senderId
+  ) {
+    throw new SendMessageError(
+      'assigned_to_other_agent',
+      'La conversación está asignada a otro agente. Solicita o realiza la transferencia antes de responder.',
+      409
+    );
   }
 
   const contact = conversation.contact;
@@ -409,6 +421,13 @@ export async function sendMessageToConversation(
     return result.messageId;
   };
 
+  // Reserve before any external effect. A duplicate never reaches Meta, even
+  // across server processes. Uncertain sends stay reserved for manual review.
+  const reservation = params.requestId
+    ? await claimSend(accountId, params.requestId, params)
+    : null;
+  if (reservation?.result) return reservation.result;
+
   // Send via Meta — retry across phone-number variants if Meta rejects
   // with "recipient not in allowed list"; persist a working variant
   // back to the contact so the next send goes straight through.
@@ -417,7 +436,9 @@ export async function sendMessageToConversation(
   try {
     // Variants only make sense for a phone number — a BSUID is opaque
     // and has exactly one correct form, so it gets a single attempt.
-    const variants = hasValidPhone ? phoneVariants(sanitizedPhone) : [sendTarget];
+    const variants = hasValidPhone
+      ? phoneVariants(sanitizedPhone)
+      : [sendTarget];
     let lastError: unknown = null;
 
     for (const variant of variants) {
@@ -433,7 +454,7 @@ export async function sendMessageToConversation(
         }
         lastError = err;
         console.warn(
-          `[send-message] variant "${variant}" rejected by Meta, trying next…`
+          `[send-message] recipient variant rejected by Meta, trying next…`
         );
       }
     }
@@ -442,18 +463,25 @@ export async function sendMessageToConversation(
   } catch (err) {
     const message =
       err instanceof Error ? err.message : 'Unknown Meta API error';
+    if (
+      reservation &&
+      err instanceof MetaApiError &&
+      err.code !== null &&
+      err.httpStatus >= 400 &&
+      err.httpStatus < 500
+    ) {
+      await releaseRejectedSend(accountId, params.requestId!);
+    }
     console.error('[send-message] Meta send failed for all variants:', message);
     throw new SendMessageError('meta_error', `Meta API error: ${message}`, 502);
   }
 
-  if (hasValidPhone && workingPhone !== sanitizedPhone) {
-    console.log(
-      `[send-message] Auto-corrected contact phone: ${sanitizedPhone} → ${workingPhone}`
-    );
+  if (hasValidPhone && workingPhone !== contact.phone) {
     await db
       .from('contacts')
       .update({ phone: workingPhone })
-      .eq('id', contact.id);
+      .eq('id', contact.id)
+      .eq('account_id', accountId);
   }
 
   // Persist the sent message. Field names MUST match the messages
@@ -507,6 +535,12 @@ export async function sendMessageToConversation(
       500
     );
   }
+
+  const sendResult = {
+    messageId: messageRecord.id,
+    whatsappMessageId: waMessageId,
+  };
+  if (reservation) await completeSend(accountId, params.requestId!, sendResult);
 
   await applyPendingMessageStatuses(supabaseAdmin(), accountId, waMessageId);
 

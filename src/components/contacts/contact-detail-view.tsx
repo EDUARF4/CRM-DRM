@@ -1,5 +1,6 @@
 'use client';
 
+import { sendInboxRequest } from "@/lib/inbox/send-request";
 import { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { addContactTag, deleteContactTag } from '@/lib/contacts/tag-api';
@@ -344,10 +345,7 @@ export function ContactDetailView({
     if (!contactId) return;
     setSendingTemplate(true);
     try {
-      const res = await fetch('/api/whatsapp/send', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      const res = await sendInboxRequest({
           // No conversation_id — the route find-or-creates one for this
           // contact, mirroring the inbox template-send payload otherwise.
           contact_id: contactId,
@@ -360,8 +358,7 @@ export function ContactDetailView({
             buttonParams: values.buttonParams,
           },
           template_params: values.body,
-        }),
-      });
+        });
 
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) {

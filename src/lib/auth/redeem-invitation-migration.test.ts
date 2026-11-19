@@ -14,6 +14,8 @@ const tablesWithoutDomainData = new Set([
   "account_invitations",
   "member_presence",
   "pending_message_statuses",
+  // Metadata is covered by the conversations guard: its NOT NULL FK cascades.
+  "outbound_send_requests",
 ]);
 
 function accountScopedTables(): Set<string> {
