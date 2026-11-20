@@ -7,7 +7,7 @@ vi.mock('@/lib/push/fcm', () => ({isPushConfigured:mocks.configured}));
 vi.mock('@/lib/rate-limit', () => ({checkRateLimit:mocks.rate}));
 import { DELETE, GET, POST } from './route';
 const payload = { installationId:'00000000-0000-4000-8000-000000000004', secret:'a'.repeat(64), token:'t'.repeat(150) };
-function request(method = 'POST', value: unknown = payload, origin = 'https://crm.example') {
+function request(method = 'POST', value: unknown = payload, origin = 'https://lightblue-reindeer-349968.hostingersite.com') {
   return new Request('https://crm.example/api/push/devices',{method,headers:{Origin:origin,'Content-Type':'application/json'},body:JSON.stringify(value)});
 }
 beforeEach(() => {
@@ -16,6 +16,18 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 describe('Android device registration API', () => {
+  it('accepts the APK origin through an internal HTTP reverse proxy', async () => {
+    const req = new Request('http://127.0.0.1:3000/api/push/devices', {
+      method: 'POST', headers: { Origin: 'https://lightblue-reindeer-349968.hostingersite.com', 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+    });
+    expect((await POST(req)).status).toBe(200);
+    expect(mocks.rpc).toHaveBeenCalledTimes(1);
+  });
+  it.each(['null', '', 'http://lightblue-reindeer-349968.hostingersite.com', 'https://lightblue-reindeer-349968.hostingersite.com.attacker.example'])('rejects non-APK origin %s even with spoofed proxy headers', async origin => {
+    const req = new Request('http://127.0.0.1:3000/api/push/devices', { method: 'POST', headers: { Origin: origin, 'X-Forwarded-Host': 'lightblue-reindeer-349968.hostingersite.com', 'X-Forwarded-Proto': 'https', 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    expect((await POST(req)).status).toBe(403);
+    expect(mocks.ctx).not.toHaveBeenCalled();
+  });
   it('requires a signed-in account', async () => {
     mocks.ctx.mockRejectedValue(new Error('no session'));
     expect((await POST(request())).status).toBe(401); expect((await GET()).status).toBe(401);

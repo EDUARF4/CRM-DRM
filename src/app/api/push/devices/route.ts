@@ -13,7 +13,11 @@ const hash = (value: string) => createHash('sha256').update(value).digest('hex')
 const reply = (error: string, status: number) => NextResponse.json({ error }, { status });
 
 function sameOrigin(request: Request): boolean {
-  return request.headers.get('origin') === new URL(request.url).origin;
+  // This is the exact origin allowed by the Android APK's native bridge.
+  // Hostinger terminates HTTPS in its proxy; request.url may have the internal
+  // HTTP origin. Do not infer trust from that URL or client-supplied forwarded
+  // headers. Keep an explicit origin check before the session/installation gates.
+  return request.headers.get('origin') === 'https://lightblue-reindeer-349968.hostingersite.com';
 }
 async function body(request: Request): Promise<Record<string, unknown> | null> {
   try {
