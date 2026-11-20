@@ -4,6 +4,7 @@ import { getLocale, getMessages, getTranslations } from 'next-intl/server';
 import { Inter } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
+import { PwaProvider } from "@/components/pwa/pwa-provider";
 import { ThemeProvider } from "@/hooks/use-theme";
 import { ThemedToaster } from "@/components/themed-toaster";
 import {
@@ -30,15 +31,19 @@ export async function generateMetadata(): Promise<Metadata> {
 
 const metadata: Metadata = {
   title: {
-    default: "wacrm",
-    template: "%s — wacrm",
+    default: "DRM CRM",
+    template: "%s — DRM CRM",
   },
+  applicationName: "DRM CRM",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: { capable: true, title: "DRM CRM", statusBarStyle: "default" },
   robots: {
     index: false,
     follow: false,
   },
   icons: {
-    icon: [{ url: "/icon" }],
+    icon: [{ url: "/app-icons/drm-192.png", type: "image/png" }],
+    apple: [{ url: "/app-icons/drm-180.png", sizes: "180x180", type: "image/png" }],
   },
   formatDetection: {
     email: false,
@@ -48,7 +53,7 @@ const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#020617",
+  themeColor: "#101114",
   colorScheme: "dark light",
 };
 
@@ -117,8 +122,10 @@ export default async function RootLayout({
       <body className="min-h-full bg-background text-foreground font-sans">
         <NextIntlClientProvider messages={messages} locale={locale}>
           <ThemeProvider>
-            {children}
-            <ThemedToaster />
+            <PwaProvider>
+              {children}
+              <ThemedToaster />
+            </PwaProvider>
           </ThemeProvider>
         </NextIntlClientProvider>
       </body>
