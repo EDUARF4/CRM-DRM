@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <rect width="512" height="512" fill="#101114"/>
+  <rect x="104" y="132" width="304" height="24" rx="12" fill="#dc2626"/>
+  <text x="256" y="296" text-anchor="middle" fill="#ffffff" font-family="DejaVu Sans,Arial,sans-serif" font-size="112" font-weight="bold">DRM</text>
+  <text x="256" y="354" text-anchor="middle" fill="#d4d4d8" font-family="DejaVu Sans,Arial,sans-serif" font-size="36" letter-spacing="10">CRM</text>
+</svg>
