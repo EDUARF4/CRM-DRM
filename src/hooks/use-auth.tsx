@@ -13,6 +13,7 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import type { User } from "@supabase/supabase-js";
 import { DEFAULT_CURRENCY } from "@/lib/currency";
+import { disableNativePush } from '@/lib/push/native-client';
 import {
   canEditSettings as canEditSettingsFor,
   canManageMembers as canManageMembersFor,
@@ -381,6 +382,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [fetchProfile]);
 
   const signOut = useCallback(async () => {
+    // Stop native notifications locally even when the device is offline.
+    await disableNativePush().catch(() => {});
     const supabase = createClient();
     await supabase.auth.signOut();
     setUser(null);
