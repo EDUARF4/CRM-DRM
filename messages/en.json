@@ -17,6 +17,7 @@
     "linkInvalid": "That link couldn’t be used to sign you in. If you were confirming your email, it may already be verified — just sign in below. For a password reset, request a new link and open it in the same browser you requested it from."
   },
   "Sidebar": {
+    "agenda": "Appointments",
     "title": "CRM Template for WhatsApp",
     "primaryNav": "Primary",
     "dashboard": "Dashboard",
@@ -44,6 +45,7 @@
     "menuSignOut": "Sign out"
   },
   "Header": {
+    "agenda": "Appointments",
     "dashboard": "Dashboard",
     "inbox": "Inbox",
     "notifications": "Notifications",
