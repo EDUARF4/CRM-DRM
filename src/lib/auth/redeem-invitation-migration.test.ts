@@ -16,6 +16,9 @@ const tablesWithoutDomainData = new Set([
   "pending_message_statuses",
   // Metadata is covered by the conversations guard: its NOT NULL FK cascades.
   "outbound_send_requests",
+  // Device registrations are preferences, not business records. Account deletion
+  // cascades them; invitation redemption must still work after mobile opt-in.
+  "android_push_devices",
 ]);
 
 function accountScopedTables(): Set<string> {

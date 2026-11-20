@@ -1,0 +1,27 @@
+plugins { id 'com.android.application'; id 'com.google.gms.google-services' }
+android {
+    namespace 'mx.drm.crm.preview'
+    compileSdk 35
+    defaultConfig {
+        applicationId 'mx.drm.crm.preview'
+        minSdk 26
+        targetSdk 35
+        versionCode 2
+        versionName '0.2.0-prueba'
+    }
+    signingConfigs {
+        preview {
+            storeFile file(System.getenv('DRM_PREVIEW_KEYSTORE') ?: '../../../drm-android/preview.keystore')
+            storePassword 'android'
+            keyAlias 'drmpreview'
+            keyPassword 'android'
+        }
+    }
+    buildTypes { release { signingConfig signingConfigs.preview; minifyEnabled false } }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_1_8; targetCompatibility JavaVersion.VERSION_1_8 }
+}
+dependencies {
+    implementation platform('com.google.firebase:firebase-bom:34.0.0')
+    implementation 'com.google.firebase:firebase-messaging'
+    implementation 'androidx.webkit:webkit:1.12.1'
+}

@@ -32,6 +32,7 @@ import {
   isTemplateWebhookField,
 } from '@/lib/whatsapp/template-webhook'
 import { applyMessageStatus } from '@/lib/whatsapp/message-status-sync'
+import { deliverAndroidPush } from '@/lib/push/deliver'
 
 // The `after()` callback in POST runs within this route's max duration.
 // Inbound processing can fan out to per-media Meta verification calls, so
@@ -779,6 +780,10 @@ async function processMessage(
   // so the broadcast's `replied_count` advances (via the aggregate
   // trigger installed in migration 003).
   await flagBroadcastReplyIfAny(accountId, contactRecord.id)
+
+  // Only the first successful inbound insert reaches this point. Awaited
+  // within after(); notifications are best-effort and never fail messaging.
+  await deliverAndroidPush(supabaseAdmin(), accountId, conversation.id, insertedRows[0].id)
 
   // ============================================================
   // Flow runner dispatch.
