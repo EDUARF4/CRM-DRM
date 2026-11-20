@@ -182,14 +182,15 @@ vi.mock('@/lib/whatsapp/encryption', () => ({
   isLegacyFormat: () => false,
 }));
 
+const flowPauseRead = vi.hoisted(() => vi.fn());
 vi.mock('@/lib/flows/admin-client', () => ({
   // Only used for the best-effort "pause active flow run" write.
   supabaseAdmin: () => ({
-    from: () => ({
+    from: (table: string) => { flowPauseRead(table); return ({
       update: () => ({
         eq: () => ({ eq: () => ({ eq: async () => ({ error: null }) }) }),
       }),
-    }),
+    }); },
   }),
 }));
 
@@ -528,5 +529,24 @@ describe('sendMessageToConversation — statuses that beat the insert', () => {
       'acct-1',
       'wamid.text'
     );
+  });
+});
+
+
+describe('sendMessageToConversation — scheduled service reminders', () => {
+  it('keeps an active flow running for trusted scheduled sends', async () => {
+    flowPauseRead.mockClear();
+    const result = await sendMessageToConversation(sendPathDb([], {}), 'acct-1', {
+      conversationId: 'cv-1', messageType: 'text', contentText: 'recordatorio', preserveActiveFlow: true,
+    });
+    expect(result.messageId).toBe('msg-1');
+    expect(flowPauseRead).not.toHaveBeenCalledWith('flow_runs');
+  });
+  it('keeps the human takeover behavior for normal agent sends', async () => {
+    flowPauseRead.mockClear();
+    await sendMessageToConversation(sendPathDb([], {}), 'acct-1', {
+      conversationId: 'cv-1', messageType: 'text', contentText: 'respuesta manual',
+    });
+    expect(flowPauseRead).toHaveBeenCalledWith('flow_runs');
   });
 });

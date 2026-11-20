@@ -85,6 +85,8 @@ export interface SendMessageParams {
   replyToMessageId?: string | null;
   senderId?: string | null;
   requestId?: string | null;
+  /** Trusted server automation; a scheduled reminder is not a human takeover. */
+  preserveActiveFlow?: boolean;
 }
 
 export interface SendMessageResult {
@@ -557,6 +559,8 @@ export async function sendMessageToConversation(
       updated_at: new Date().toISOString(),
     })
     .eq('id', conversationId);
+
+  if (params.preserveActiveFlow) return sendResult;
 
   // Pause any active Flow run for this contact — the agent stepping in
   // is the strongest "yield, human is here" signal. Best-effort.
