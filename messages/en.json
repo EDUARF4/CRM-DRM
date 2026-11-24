@@ -1,4 +1,16 @@
 {
+  "Pwa": {
+    "title": "Install DRM CRM",
+    "description": "Open your inbox from your home screen in its own app window.",
+    "installedTitle": "DRM CRM is running as an app",
+    "installedDescription": "You can use this inbox with your usual account.",
+    "install": "Install app",
+    "opening": "Opening…",
+    "failed": "The installation prompt could not open. Use your browser menu.",
+    "androidHelp": "Android / Chrome: open the browser menu (⋮) and choose Install app or Add to Home screen.",
+    "iosHelp": "iPhone / Safari: tap Share → Add to Home Screen → Open as Web App.",
+    "connectionRequired": "An internet connection is required to open conversations and send messages."
+  },
   "LoginPage": {
     "titleAccept": "Sign in to accept",
     "titleWelcome": "Welcome back",

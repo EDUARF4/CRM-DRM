@@ -1,4 +1,16 @@
 {
+  "Pwa": {
+    "title": "Instalar DRM CRM",
+    "description": "Abra sua caixa de entrada pela tela inicial em uma janela própria.",
+    "installedTitle": "DRM CRM está aberto como aplicativo",
+    "installedDescription": "Use esta caixa de entrada com sua conta habitual.",
+    "install": "Instalar aplicativo",
+    "opening": "Abrindo…",
+    "failed": "Não foi possível abrir a instalação. Use o menu do navegador.",
+    "androidHelp": "Android / Chrome: abra o menu (⋮) e escolha Instalar aplicativo ou Adicionar à tela inicial.",
+    "iosHelp": "iPhone / Safari: toque em Compartilhar → Adicionar à Tela de Início → Abrir como Aplicativo Web.",
+    "connectionRequired": "É necessário ter internet para abrir conversas e enviar mensagens."
+  },
   "LoginPage": {
     "titleAccept": "Entre para aceitar",
     "titleWelcome": "Bem-vindo de volta",
