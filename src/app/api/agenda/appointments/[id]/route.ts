@@ -59,3 +59,39 @@ export async function PATCH(
     return agendaError(error);
   }
 }
+
+export async function DELETE(
+  request: Request,
+  context: { params: Promise<{ id: string }> }
+) {
+  if (!agendaWriteAllowed(request))
+    return NextResponse.json(
+      { error: 'Solicitud no permitida.' },
+      { status: 403 }
+    );
+  try {
+    const ctx = await requireRole('agent');
+    const { id } = await context.params;
+    const body = await agendaBody(request);
+    if (
+      !isUuid(id) ||
+      !body ||
+      !Number.isInteger(body.version) ||
+      (body.version as number) < 1
+    )
+      return NextResponse.json(
+        { error: 'Datos de cita no válidos.' },
+        { status: 400 }
+      );
+    const { error } = await supabaseAdmin().rpc('delete_service_appointment', {
+      p_id: id,
+      p_account_id: ctx.accountId,
+      p_actor_id: ctx.userId,
+      p_expected_version: body.version,
+    });
+    if (error) return agendaDatabaseError(error);
+    return NextResponse.json({ deleted: true });
+  } catch (error) {
+    return agendaError(error);
+  }
+}

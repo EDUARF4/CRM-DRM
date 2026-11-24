@@ -15,7 +15,7 @@ vi.mock('@/lib/flows/admin-client', () => ({
   supabaseAdmin: () => ({ rpc: mocks.rpc }),
 }));
 import { GET, POST } from './route';
-import { PATCH } from './[id]/route';
+import { DELETE, PATCH } from './[id]/route';
 const id = '00000000-0000-4000-8000-000000000001';
 const payload = {
   id,
@@ -59,6 +59,63 @@ beforeEach(() => {
   });
 });
 describe('Agenda API access and versions', () => {
+  it('requires an authenticated agent and a trusted origin to delete', async () => {
+    const ctx = { params: Promise.resolve({ id }) };
+    expect(
+      (
+        await DELETE(
+          request('DELETE', { version: 1 }, 'https://evil.example'),
+          ctx
+        )
+      ).status
+    ).toBe(403);
+    expect(mocks.role).not.toHaveBeenCalled();
+    mocks.role.mockRejectedValue({ status: 403 });
+    expect((await DELETE(request('DELETE', { version: 1 }), ctx)).status).toBe(
+      403
+    );
+    expect(mocks.rpc).not.toHaveBeenCalled();
+  });
+  it('deletes only the requested version in the server account, ignoring supplied identities', async () => {
+    const response = await DELETE(
+      request('DELETE', { version: 4, account_id: 'other', user_id: 'other' }),
+      { params: Promise.resolve({ id }) }
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ deleted: true });
+    expect(mocks.rpc).toHaveBeenCalledWith('delete_service_appointment', {
+      p_id: id,
+      p_account_id: 'session-account',
+      p_actor_id: 'session-user',
+      p_expected_version: 4,
+    });
+  });
+  it.each([{}, { version: 0 }, { version: 1.5 }])(
+    'rejects deletion without a valid expected version: %j',
+    async (body) => {
+      expect(
+        (
+          await DELETE(request('DELETE', body), {
+            params: Promise.resolve({ id }),
+          })
+        ).status
+      ).toBe(400);
+      expect(mocks.rpc).not.toHaveBeenCalled();
+    }
+  );
+  it.each(['AGENDA_VERSION', 'AGENDA_SENDING'])(
+    'keeps a conflicting deletion visible as a failure: %s',
+    async (message) => {
+      mocks.rpc.mockResolvedValue({ error: { message } });
+      expect(
+        (
+          await DELETE(request('DELETE', { version: 1 }), {
+            params: Promise.resolve({ id }),
+          })
+        ).status
+      ).toBe(409);
+    }
+  );
   it('requires agent access before any create/edit', async () => {
     mocks.role.mockRejectedValue({ status: 403 });
     expect((await POST(request())).status).toBe(403);

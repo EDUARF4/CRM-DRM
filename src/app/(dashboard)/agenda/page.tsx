@@ -1,13 +1,29 @@
 'use client';
 
-import { useEffect, useState, type FormEvent } from 'react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type FormEvent,
+} from 'react';
 import Link from 'next/link';
 import {
   CalendarDays,
+  Bell,
+  BellOff,
+  Ban,
+  CheckCircle2,
+  FileText,
+  MessageCircle,
+  Pencil,
+  Store,
+  Tag,
+  Trash2,
+  Users,
   ChevronLeft,
   ChevronRight,
   Clock,
-  MapPin,
   Plus,
   RefreshCw,
   UserRound,
@@ -30,11 +46,22 @@ import {
   localToIso,
   mexicoLocal,
   REMINDER_STATES,
-  shiftDay,
   STATUSES,
   type Appointment,
   type AppointmentValues,
 } from '@/lib/agenda/model';
+
+import { createClient } from '@/lib/supabase/client';
+import {
+  calendarDate,
+  calendarPeriod,
+  movePeriod,
+  eventColor,
+  EVENT_COLORS,
+  type CalendarView,
+} from '@/lib/agenda/calendar';
+import { CalendarViewPanel } from './calendar-view';
+import styles from './calendar.module.css';
 
 interface Options {
   contacts: { id: string; name: string | null; phone: string }[];
@@ -100,7 +127,30 @@ export default function AgendaPage() {
   const { accountId, accountRole } = useAuth();
   const canEdit = !!accountRole && accountRole !== 'viewer';
   const [day, setDay] = useState(() => mexicoLocal(new Date()).slice(0, 10));
-  const [days, setDays] = useState(7);
+  const [view, setView] = useState<CalendarView>('week');
+  const [location, setLocation] = useState('');
+  const [service, setService] = useState('');
+  const [remindersOnly, setRemindersOnly] = useState(false);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [conversation, setConversation] = useState<{
+    contact: string;
+    id: string | null;
+    error: boolean;
+  } | null>(null);
+  const detailRef = useRef<HTMLElement>(null);
+  const [action, setAction] = useState<{
+    kind: 'reminder' | 'cancel' | 'delete';
+    row: Appointment;
+  } | null>(null);
+  const [actionError, setActionError] = useState('');
+  const [actionBusy, setActionBusy] = useState(false);
+  const [notice, setNotice] = useState('');
+  const period = calendarPeriod(day, view);
+  const periodFrom = period.from,
+    periodTo = period.to;
+  useEffect(() => {
+    if (window.matchMedia('(max-width: 767px)').matches) setView('day');
+  }, []);
   const [agent, setAgent] = useState('');
   const [rows, setRows] = useState<Appointment[]>([]);
   const [options, setOptions] = useState<Options>(emptyOptions);
@@ -130,8 +180,8 @@ export default function AgendaPage() {
     setError('');
     let from: string, to: string;
     try {
-      from = localToIso(`${day}T00:00`);
-      to = localToIso(`${shiftDay(day, days)}T00:00`);
+      from = localToIso(`${periodFrom}T00:00`);
+      to = localToIso(`${periodTo}T00:00`);
     } catch {
       setError('Selecciona una fecha válida.');
       setLoading(false);
@@ -157,7 +207,7 @@ export default function AgendaPage() {
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [accountId, day, days, agent, refresh]);
+  }, [accountId, periodFrom, periodTo, agent, refresh]);
   useEffect(() => {
     if (!accountId) return;
     const controller = new AbortController();
@@ -210,7 +260,10 @@ export default function AgendaPage() {
           body: JSON.stringify({ ...form, starts_at, ends_at }),
         }
       );
-      await responseData(response);
+      const data = await responseData(response);
+      setSelectedId(data.appointment.id);
+      setDay(form.local_start.slice(0, 10));
+      setNotice('Cita guardada.');
       setForm(null);
       setRefresh((v) => v + 1);
     } catch (e) {
@@ -219,103 +272,160 @@ export default function AgendaPage() {
       setSaving(false);
     }
   };
-  const grouped = rows.reduce<Record<string, Appointment[]>>((groups, row) => {
-    const date = mexicoLocal(row.starts_at).slice(0, 10);
-    (groups[date] ??= []).push(row);
-    return groups;
-  }, {});
-  const counts = {
-    active: rows.filter((r) => ['scheduled', 'confirmed'].includes(r.status))
-      .length,
-    completed: rows.filter((r) => r.status === 'completed').length,
-    reminders: rows.filter((r) => r.reminder_state === 'pending').length,
+  const locations = [...new Set(rows.map((r) => r.location))].sort();
+  const services = [...new Set(rows.map((r) => r.service_type))].sort();
+  const visible = rows.filter(
+    (row) =>
+      (!location || row.location === location) &&
+      (!service || row.service_type === service) &&
+      (!remindersOnly || row.reminder_enabled)
+  );
+  const selected =
+    !loading && !error
+      ? (visible.find((r) => r.id === selectedId) ?? visible[0])
+      : undefined;
+  const selectedContact = selected?.contact_id;
+  useEffect(() => {
+    if (!accountId || !selectedContact) return;
+    let live = true;
+    const db = createClient();
+    void db
+      .from('conversations')
+      .select('id')
+      .eq('account_id', accountId)
+      .eq('contact_id', selectedContact)
+      .maybeSingle()
+      .then(({ data, error: queryError }) => {
+        if (live)
+          setConversation({
+            contact: selectedContact,
+            id: data?.id ?? null,
+            error: !!queryError,
+          });
+      });
+    return () => {
+      live = false;
+    };
+  }, [accountId, selectedContact, refresh]);
+  const chat = conversation?.contact === selectedContact ? conversation : null;
+  const memberName = (id: string | null) =>
+    id
+      ? options.members.find((m) => m.user_id === id)?.full_name ||
+        'Responsable no disponible'
+      : 'Sin asignar';
+  const selectAppointment = (row: Appointment) => {
+    setSelectedId(row.id);
+    if (window.matchMedia('(max-width: 1279px)').matches)
+      requestAnimationFrame(() =>
+        detailRef.current?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'start',
+        })
+      );
   };
+  const requestAction = (
+    kind: 'reminder' | 'cancel' | 'delete',
+    row: Appointment
+  ) => {
+    setActionError('');
+    setAction({ kind, row });
+  };
+  const performAction = async () => {
+    if (!action || actionBusy) return;
+    setActionBusy(true);
+    setActionError('');
+    try {
+      const response = await fetch(
+        `/api/agenda/appointments/${action.row.id}`,
+        {
+          method: action.kind === 'delete' ? 'DELETE' : 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(
+            action.kind === 'delete'
+              ? { version: action.row.version }
+              : {
+                  ...action.row,
+                  reminder_enabled: false,
+                  ...(action.kind === 'cancel' ? { status: 'cancelled' } : {}),
+                }
+          ),
+        }
+      );
+      await responseData(response);
+      setNotice(
+        action.kind === 'delete'
+          ? 'Cita eliminada.'
+          : action.kind === 'cancel'
+            ? 'Cita cancelada. Se detuvo su recordatorio pendiente.'
+            : 'Recordatorio cancelado. La cita sigue en la agenda.'
+      );
+      setAction(null);
+      setRefresh((v) => v + 1);
+    } catch (e) {
+      setActionError(
+        e instanceof Error ? e.message : 'No se pudo completar la acción.'
+      );
+    } finally {
+      setActionBusy(false);
+    }
+  };
+  const today = mexicoLocal(new Date()).slice(0, 10);
+  const counts = {
+    active: visible.filter((r) => ['scheduled', 'confirmed'].includes(r.status))
+      .length,
+    completed: visible.filter((r) => r.status === 'completed').length,
+    reminders: visible.filter((r) => r.reminder_state === 'pending').length,
+  };
+  const upcoming = visible
+    .filter(
+      (r) =>
+        ['scheduled', 'confirmed'].includes(r.status) &&
+        Date.parse(r.ends_at) > Date.now()
+    )
+    .slice(0, 4);
+  const periodLabel =
+    view === 'month'
+      ? calendarDate(day, { month: 'long', year: 'numeric' })
+      : view === 'day'
+        ? calendarDate(day, { day: 'numeric', month: 'long', year: 'numeric' })
+        : `${calendarDate(period.from, { day: 'numeric', month: 'short' })} – ${calendarDate(period.dates[6], { day: 'numeric', month: 'short', year: 'numeric' })}`;
+  const palette = selected
+    ? eventColor(selected.service_type)
+    : EVENT_COLORS.workshop;
   return (
-    <div className="mx-auto max-w-6xl space-y-5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+    <div className={styles.agenda}>
+      <div className={styles.heading}>
         <div>
-          <div className="flex items-center gap-2">
-            <CalendarDays className="text-primary h-6 w-6" />
-            <h1 className="text-2xl font-semibold">Agenda de servicios</h1>
-          </div>
-          <p className="text-muted-foreground mt-1 text-sm">
-            Citas del taller y recordatorios por WhatsApp · Hora de México
+          <h1>Agenda DRM</h1>
+          <p className={styles.subtitle}>
+            Organiza citas, servicios y seguimientos de tu equipo.
           </p>
         </div>
-        {canEdit && (
-          <Button onClick={() => open(null)}>
-            <Plus className="mr-2 h-4 w-4" />
-            Nueva cita
-          </Button>
-        )}
-      </div>
-      <div className="grid grid-cols-3 gap-2 sm:gap-4">
-        {[
-          ['Citas activas', counts.active],
-          ['Realizadas', counts.completed],
-          ['Avisos pendientes', counts.reminders],
-        ].map(([label, count]) => (
-          <div key={label} className="bg-card rounded-xl border p-3 sm:p-4">
-            <p className="text-muted-foreground text-xs sm:text-sm">{label}</p>
-            <p className="mt-1 text-2xl font-semibold">{count}</p>
-          </div>
-        ))}
-      </div>
-      <div className="bg-card flex flex-wrap items-end gap-3 rounded-xl border p-4">
-        <div className="flex items-center gap-1">
+        <div className={styles.actions}>
           <Button
             variant="outline"
-            size="icon"
-            aria-label="Periodo anterior"
-            onClick={() => setDay(shiftDay(day, -days))}
+            className={styles.reminderButton}
+            aria-pressed={remindersOnly}
+            onClick={() => setRemindersOnly((v) => !v)}
           >
-            <ChevronLeft className="h-4 w-4" />
+            <Bell size={18} /> Recordatorios
           </Button>
-          <Button
-            variant="outline"
-            onClick={() => setDay(mexicoLocal(new Date()).slice(0, 10))}
-          >
-            Hoy
-          </Button>
-          <Button
-            variant="outline"
-            size="icon"
-            aria-label="Periodo siguiente"
-            onClick={() => setDay(shiftDay(day, days))}
-          >
-            <ChevronRight className="h-4 w-4" />
-          </Button>
+          {canEdit && (
+            <Button className={styles.redButton} onClick={() => open(null)}>
+              <Plus size={19} /> Nueva cita
+            </Button>
+          )}
         </div>
-        <label className="min-w-36 flex-1 text-sm">
-          Desde
-          <Input
-            className="mt-1"
-            type="date"
-            value={day}
-            onChange={(e) => {
-              if (e.target.value) setDay(e.target.value);
-            }}
-          />
-        </label>
-        <label className="min-w-28 text-sm">
-          Vista
+      </div>
+      <div className={styles.filters}>
+        <label className={styles.filter}>
+          <Users size={19} />
           <select
-            className={`${selectClass} mt-1`}
-            value={days}
-            onChange={(e) => setDays(Number(e.target.value))}
-          >
-            <option value={1}>Un día</option>
-            <option value={7}>7 días</option>
-          </select>
-        </label>
-        <label className="min-w-40 flex-1 text-sm">
-          Responsable
-          <select
-            className={`${selectClass} mt-1`}
+            aria-label="Filtrar por asesor"
             value={agent}
             onChange={(e) => setAgent(e.target.value)}
           >
-            <option value="">Todo el equipo</option>
+            <option value="">Todos los asesores</option>
             {options.members.map((m) => (
               <option key={m.user_id} value={m.user_id}>
                 {m.full_name || 'Agente'}
@@ -323,137 +433,456 @@ export default function AgendaPage() {
             ))}
           </select>
         </label>
-        <Button
-          variant="outline"
-          size="icon"
-          aria-label="Actualizar agenda"
-          onClick={() => setRefresh((v) => v + 1)}
+        <label className={styles.filter}>
+          <Store size={19} />
+          <select
+            aria-label="Filtrar por sucursal"
+            value={location}
+            onChange={(e) => setLocation(e.target.value)}
+          >
+            <option value="">Todas las sucursales</option>
+            {[...new Set([...locations, ...(location ? [location] : [])])].map(
+              (l) => (
+                <option key={l}>{l}</option>
+              )
+            )}
+          </select>
+        </label>
+        <label className={styles.filter}>
+          <Tag size={19} />
+          <select
+            aria-label="Filtrar por tipo"
+            value={service}
+            onChange={(e) => setService(e.target.value)}
+          >
+            <option value="">Todos los tipos</option>
+            {[...new Set([...services, ...(service ? [service] : [])])].map(
+              (t) => (
+                <option key={t}>{t}</option>
+              )
+            )}
+          </select>
+        </label>
+        <div
+          className={styles.views}
+          role="group"
+          aria-label="Vista del calendario"
         >
-          <RefreshCw className="h-4 w-4" />
-        </Button>
+          {(
+            [
+              ['day', 'Día'],
+              ['week', 'Semana'],
+              ['month', 'Mes'],
+            ] as const
+          ).map(([key, label]) => (
+            <button
+              key={key}
+              aria-pressed={view === key}
+              onClick={() => setView(key)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
+      {notice && (
+        <p className={styles.notice} role="status">
+          {notice}
+        </p>
+      )}
       {optionsError && (
-        <p role="alert" className="rounded-lg border p-3 text-sm">
+        <p role="alert" className={styles.notice}>
           {optionsError}
         </p>
       )}
       {optionsLoaded && !options.reminderReady && !optionsError && (
-        <p className="bg-muted/30 text-muted-foreground rounded-lg border p-3 text-sm">
-          Para enviar avisos necesitamos aprobar y sincronizar la plantilla de
-          recordatorio en Meta. Puedes registrar las citas desde ahora.{' '}
+        <p className={styles.notice}>
+          Para enviar avisos, sincroniza la plantilla aprobada de recordatorio
+          en Meta.{' '}
           <Link className="underline" href="/settings">
             Abrir Configuración
           </Link>
         </p>
       )}
-      {error ? (
-        <div role="alert" className="rounded-xl border p-5">
-          <p>{error}</p>
-          <Button
-            variant="outline"
-            className="mt-3"
-            onClick={() => setRefresh((v) => v + 1)}
-          >
-            Volver a intentar
-          </Button>
+      {remindersOnly && (
+        <div className={styles.notice}>
+          Mostrando citas con recordatorio en este periodo.{' '}
+          <button className="underline" onClick={() => setRemindersOnly(false)}>
+            Ver todas las citas
+          </button>
         </div>
-      ) : loading ? (
-        <p role="status" className="text-muted-foreground py-12 text-center">
-          Cargando agenda…
-        </p>
-      ) : rows.length === 0 ? (
-        <div className="rounded-xl border border-dashed px-5 py-14 text-center">
-          <CalendarDays className="text-muted-foreground mx-auto mb-3 h-9 w-9" />
-          <h2 className="font-semibold">No hay citas en este periodo</h2>
-          <p className="text-muted-foreground mt-1 text-sm">
-            Cambia la fecha o registra la próxima visita al taller.
-          </p>
-        </div>
-      ) : (
-        Object.entries(grouped).map(([date, appointments]) => (
-          <section key={date} className="space-y-3">
-            <h2 className="text-sm font-semibold capitalize">
-              {displayDate(appointments[0].starts_at)}
-            </h2>
-            {appointments.map((row) => (
-              <article
-                key={row.id}
-                className={`bg-card rounded-xl border p-4 ${row.status === 'cancelled' ? 'opacity-65' : ''}`}
+      )}
+      <div className={styles.workspace}>
+        <section
+          className={styles.calendar}
+          aria-label="Calendario de citas"
+          aria-busy={loading}
+        >
+          <div className={styles.toolbar}>
+            <Button variant="outline" onClick={() => setDay(today)}>
+              Hoy
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              aria-label="Periodo anterior"
+              onClick={() => setDay(movePeriod(day, view, -1))}
+            >
+              <ChevronLeft size={18} />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              aria-label="Periodo siguiente"
+              onClick={() => setDay(movePeriod(day, view, 1))}
+            >
+              <ChevronRight size={18} />
+            </Button>
+            <h2 className={styles.period}>{periodLabel}</h2>
+            <Input
+              className={styles.dateInput}
+              type="date"
+              aria-label="Ir a fecha"
+              value={day}
+              min="2023-01-01"
+              max="2100-12-31"
+              onChange={(e) => {
+                if (/^\d{4}-\d{2}-\d{2}$/.test(e.target.value))
+                  setDay(e.target.value);
+              }}
+            />
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Actualizar agenda"
+              onClick={() => setRefresh((v) => v + 1)}
+            >
+              <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
+            </Button>
+          </div>
+          {error ? (
+            <div role="alert" className="p-6 text-sm">
+              <p>{error}</p>
+              <Button
+                variant="outline"
+                className="mt-3"
+                onClick={() => setRefresh((v) => v + 1)}
               >
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0 flex-1">
-                    <p className="flex items-center gap-2 text-sm font-medium">
-                      <Clock className="text-primary h-4 w-4" />
-                      {displayTime(row.starts_at)}–{displayTime(row.ends_at)}
-                    </p>
-                    <h3 className="mt-2 font-semibold break-words">
-                      {row.contact_name}
-                    </h3>
-                    <p className="text-muted-foreground mt-1 flex items-center gap-2 text-sm">
-                      <Wrench className="h-4 w-4 shrink-0" />
-                      <span className="min-w-0 break-words">
-                        {row.unit_reference} · {row.service_type}
-                      </span>
-                    </p>
-                  </div>
-                  <span
-                    className={`rounded-full px-3 py-1 text-xs font-medium ${row.status === 'completed' ? 'bg-green-500/15 text-green-600' : row.status === 'cancelled' ? 'bg-muted text-muted-foreground' : 'bg-primary/10 text-primary'}`}
-                  >
-                    {STATUSES[row.status]}
-                  </span>
-                </div>
-                <div className="text-muted-foreground mt-3 flex flex-wrap gap-x-5 gap-y-2 text-sm">
-                  <span className="flex max-w-full min-w-0 items-center gap-1">
-                    <MapPin className="h-4 w-4" />
-                    <span className="min-w-0 break-words">{row.location}</span>
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <UserRound className="h-4 w-4" />
-                    {row.assigned_agent_id
-                      ? options.members.find(
-                          (m) => m.user_id === row.assigned_agent_id
-                        )?.full_name || 'Responsable no disponible'
-                      : 'Sin asignar'}
-                  </span>
-                  {row.odometer_km !== null && (
-                    <span>{row.odometer_km.toLocaleString('es-MX')} km</span>
-                  )}
-                </div>
-                {row.notes && (
-                  <p className="mt-3 text-sm break-words whitespace-pre-wrap">
-                    {row.notes}
-                  </p>
-                )}
-                <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t pt-3">
-                  <div className="text-muted-foreground text-xs">
-                    <p>WhatsApp: {REMINDER_STATES[row.reminder_state]}</p>
-                    {row.reminder_error && (
-                      <p className="text-destructive mt-1 max-w-xl">
-                        {row.reminder_error}
-                      </p>
-                    )}
-                  </div>
-                  {canEdit && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => open(row)}
-                    >
-                      Ver / editar
-                    </Button>
-                  )}
-                </div>
-              </article>
+                Volver a intentar
+              </Button>
+            </div>
+          ) : loading ? (
+            <p
+              role="status"
+              className="text-muted-foreground py-24 text-center text-sm"
+            >
+              Cargando agenda…
+            </p>
+          ) : (
+            <CalendarViewPanel
+              day={day}
+              today={today}
+              view={view}
+              rows={visible}
+              selectedId={selected?.id ?? null}
+              memberName={memberName}
+              onSelect={selectAppointment}
+              onDay={(date) => {
+                setDay(date);
+                setView('day');
+              }}
+            />
+          )}
+          <div className={styles.legend}>
+            {Object.values(EVENT_COLORS).map((c) => (
+              <span key={c.label}>
+                <i className={styles.dot} style={{ background: c.color }} />
+                {c.label}
+              </span>
             ))}
+          </div>
+        </section>
+        <div className={styles.side}>
+          <section
+            className={styles.detail}
+            aria-label="Detalle de la cita"
+            ref={detailRef}
+            style={
+              {
+                '--event-color': palette.color,
+                '--event-bg': palette.background,
+              } as CSSProperties
+            }
+          >
+            <h2>Detalle de la cita</h2>
+            {selected ? (
+              <>
+                <span className={styles.badge}>{selected.service_type}</span>
+                <h3 className={styles.client}>{selected.contact_name}</h3>
+                <p className={styles.unit}>{selected.unit_reference}</p>
+                <dl className={styles.details}>
+                  <div>
+                    <CalendarDays />
+                    <dt>Fecha</dt>
+                    <dd>
+                      {displayDate(selected.starts_at)}
+                      {mexicoLocal(selected.ends_at).slice(0, 10) !==
+                        mexicoLocal(selected.starts_at).slice(0, 10) && (
+                        <> – {displayDate(selected.ends_at)}</>
+                      )}
+                    </dd>
+                  </div>
+                  <div>
+                    <Clock />
+                    <dt>Horario</dt>
+                    <dd>
+                      {displayTime(selected.starts_at)} –{' '}
+                      {displayTime(selected.ends_at)} · México
+                    </dd>
+                  </div>
+                  <div>
+                    <UserRound />
+                    <dt>Asesor</dt>
+                    <dd>{memberName(selected.assigned_agent_id)}</dd>
+                  </div>
+                  <div>
+                    <Store />
+                    <dt>Sucursal</dt>
+                    <dd>{selected.location}</dd>
+                  </div>
+                  <div>
+                    <CheckCircle2 />
+                    <dt>Estado</dt>
+                    <dd>
+                      <span className={styles.status}>
+                        <i
+                          className={styles.dot}
+                          style={{
+                            background:
+                              selected.status === 'confirmed' ||
+                              selected.status === 'completed'
+                                ? '#08a653'
+                                : selected.status === 'cancelled'
+                                  ? '#8b8b98'
+                                  : '#f59e0b',
+                          }}
+                        />
+                        {STATUSES[selected.status]}
+                      </span>
+                    </dd>
+                  </div>
+                  {selected.odometer_km !== null && (
+                    <div>
+                      <Wrench />
+                      <dt>Lectura</dt>
+                      <dd>{selected.odometer_km.toLocaleString('es-MX')} km</dd>
+                    </div>
+                  )}
+                </dl>
+                {selected.notes && (
+                  <div className={styles.notes}>
+                    <p className="flex items-center gap-2">
+                      <FileText size={15} /> Notas
+                    </p>
+                    <blockquote>{selected.notes}</blockquote>
+                  </div>
+                )}
+                <div className={styles.reminder}>
+                  <p>
+                    <Bell size={17} /> WhatsApp:{' '}
+                    {REMINDER_STATES[selected.reminder_state]}
+                  </p>
+                  {selected.reminder_enabled && (
+                    <small>
+                      {selected.reminder_minutes === 1440
+                        ? '24 horas'
+                        : selected.reminder_minutes === 120
+                          ? '2 horas'
+                          : '1 hora'}{' '}
+                      antes de la cita
+                    </small>
+                  )}
+                  {selected.reminder_error && (
+                    <p className={styles.reminderError}>
+                      {selected.reminder_error}
+                    </p>
+                  )}
+                </div>
+                <div className={styles.detailActions}>
+                  {chat?.id ? (
+                    <Link
+                      className={styles.chatLink}
+                      href={`/inbox?c=${chat.id}`}
+                    >
+                      <MessageCircle size={19} /> Abrir conversación
+                    </Link>
+                  ) : (
+                    <span
+                      className={`${styles.chatLink} ${styles.disabledChat}`}
+                    >
+                      {!selected.contact_id
+                        ? 'Contacto no disponible'
+                        : !chat
+                          ? 'Buscando conversación…'
+                          : chat.error
+                            ? 'No se pudo consultar el chat'
+                            : 'Aún no hay conversación'}
+                    </span>
+                  )}
+                  {canEdit && (
+                    <>
+                      <Button variant="outline" onClick={() => open(selected)}>
+                        <Pencil size={15} /> Editar cita
+                      </Button>
+                      <Button variant="outline" onClick={() => open(selected)}>
+                        <CalendarDays size={15} /> Reprogramar
+                      </Button>
+                    </>
+                  )}
+                </div>
+                {canEdit && (
+                  <div className={styles.management}>
+                    {selected.reminder_enabled &&
+                      !['sent', 'disabled'].includes(
+                        selected.reminder_state
+                      ) && (
+                        <button
+                          disabled={selected.reminder_state === 'sending'}
+                          onClick={() => requestAction('reminder', selected)}
+                        >
+                          <BellOff size={14} /> Cancelar recordatorio
+                        </button>
+                      )}
+                    {!['completed', 'cancelled'].includes(selected.status) && (
+                      <button
+                        disabled={selected.reminder_state === 'sending'}
+                        onClick={() => requestAction('cancel', selected)}
+                      >
+                        <Ban size={14} /> Cancelar cita
+                      </button>
+                    )}
+                    <button
+                      className={styles.delete}
+                      disabled={selected.reminder_state === 'sending'}
+                      onClick={() => requestAction('delete', selected)}
+                    >
+                      <Trash2 size={14} /> Eliminar cita
+                    </button>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className={styles.emptyDetail}>
+                <CalendarDays size={30} />
+                <p>Selecciona una cita del calendario para ver sus detalles.</p>
+              </div>
+            )}
           </section>
-        ))
+          <section className={styles.upcoming}>
+            <h2>Próximas citas</h2>
+            <p>Dentro del periodo y los filtros seleccionados.</p>
+            {!loading &&
+              !error &&
+              upcoming.map((row) => (
+                <button
+                  key={row.id}
+                  className={styles.upcomingButton}
+                  onClick={() => selectAppointment(row)}
+                >
+                  <span>
+                    <strong>{row.contact_name}</strong>
+                    <small>
+                      {calendarDate(mexicoLocal(row.starts_at).slice(0, 10), {
+                        day: 'numeric',
+                        month: 'short',
+                      })}{' '}
+                      · {displayTime(row.starts_at)} · {row.service_type}
+                    </small>
+                  </span>
+                  <ChevronRight size={16} className="shrink-0" />
+                </button>
+              ))}
+            {!loading && !error && !upcoming.length && (
+              <p className="py-4">No hay próximas citas en este periodo.</p>
+            )}
+          </section>
+        </div>
+      </div>
+      {!loading && !error && (
+        <div className={styles.summary}>
+          <span>{visible.length} citas</span>
+          <span>{counts.active} activas</span>
+          <span>{counts.completed} realizadas</span>
+          <span>{counts.reminders} avisos pendientes</span>
+          <span>Hora de Ciudad de México</span>
+        </div>
       )}
       {truncated && (
-        <p className="text-muted-foreground text-sm">
-          Se muestran las primeras 200 citas. Elige la vista de un día o filtra
-          por responsable.
+        <p role="status" className={`${styles.notice} mt-3`}>
+          Se muestran las primeras 200 citas. Selecciona un día o filtra por
+          asesor para consultar el resto.
         </p>
       )}
+      <Dialog
+        open={!!action}
+        onOpenChange={(value) => {
+          if (!value && !actionBusy) setAction(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {action?.kind === 'delete'
+                ? '¿Eliminar esta cita?'
+                : action?.kind === 'cancel'
+                  ? '¿Cancelar esta cita?'
+                  : '¿Cancelar el recordatorio?'}
+            </DialogTitle>
+            <DialogDescription>
+              {action?.kind === 'delete'
+                ? 'La cita se borrará definitivamente de la agenda y se detendrá su recordatorio pendiente. Los mensajes ya enviados permanecerán en el chat.'
+                : action?.kind === 'cancel'
+                  ? 'La cita quedará como cancelada y conservará su historial. Se detendrá cualquier recordatorio pendiente; los mensajes ya enviados permanecerán en el chat.'
+                  : 'Se detendrá el aviso pendiente. La cita conservará su fecha y horario. Un mensaje que ya haya salido no puede retirarse.'}
+            </DialogDescription>
+          </DialogHeader>
+          {action && (
+            <p className="rounded-lg border p-3 text-sm">
+              {action.row.contact_name}
+              <br />
+              {displayDate(action.row.starts_at)} ·{' '}
+              {displayTime(action.row.starts_at)}
+            </p>
+          )}
+          {actionError && (
+            <p role="alert" className="text-destructive text-sm">
+              {actionError}
+            </p>
+          )}
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              disabled={actionBusy}
+              onClick={() => setAction(null)}
+            >
+              Volver
+            </Button>
+            <Button
+              variant={action?.kind === 'delete' ? 'destructive' : 'default'}
+              disabled={actionBusy}
+              onClick={performAction}
+            >
+              {actionBusy
+                ? 'Procesando…'
+                : action?.kind === 'delete'
+                  ? 'Eliminar definitivamente'
+                  : action?.kind === 'cancel'
+                    ? 'Confirmar cancelación'
+                    : 'Cancelar recordatorio'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
       <Dialog
         open={!!form}
         onOpenChange={(value) => {
@@ -545,7 +974,7 @@ export default function AgendaPage() {
                     Fecha y hora
                     <Input
                       required
-                      className="mt-1"
+                      className="mt-1 min-w-0"
                       type="datetime-local"
                       value={form.local_start}
                       onChange={(e) => change('local_start', e.target.value)}

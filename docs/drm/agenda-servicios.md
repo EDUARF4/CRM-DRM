@@ -1,6 +1,16 @@
 # Agenda de servicios de DRM
 
-Primera entrega de agenda para el CRM web y la APK existente. Se registran citas con un contacto del CRM, referencia de unidad/Folio DRM, servicio, sucursal, fecha y hora, duración, responsable, kilometraje opcional y notas. Incluye estados Agendada, Confirmada, Realizada y Cancelada, vista de un día o siete días y filtro por responsable. Todas las fechas usan `America/Mexico_City`.
+Agenda para el CRM web y la APK existente. Se registran citas con un contacto del CRM, referencia de unidad/Folio DRM, servicio, sucursal, fecha y hora, duración, responsable, kilometraje opcional y notas. Incluye estados Agendada, Confirmada, Realizada y Cancelada. Todas las fechas usan `America/Mexico_City`.
+
+## Calendario y gestión de citas
+
+El diseño presenta calendario por horas, vistas Día/Semana/Mes, navegación por fecha, filtros de asesor, sucursal y tipo de servicio, y un panel de detalle. La semana muestra lunes a domingo. En celular abre la vista de un día; semana y mes permiten desplazamiento dentro del calendario. Las citas simultáneas se muestran en columnas separadas y las que cruzan medianoche aparecen en ambos días. El mes consulta solo sus días para respetar el máximo de 31 días de la API.
+
+Los colores se eligen a partir del texto del servicio: venta/visita, seguimiento/cotización, entrega o taller. No cambian el dato original. Sucursal y tipo se filtran sobre las citas del periodo cargado, después del filtro de asesor. Si se alcanza el límite de 200 citas, aparece un aviso para acotar el periodo. El botón Recordatorios muestra las citas con aviso activado, incluidos sus estados de envío.
+
+El detalle permite abrir el chat existente del contacto (con consulta protegida por cuenta y RLS), editar, reprogramar, cancelar el aviso pendiente, cancelar la cita conservando su registro o eliminarla definitivamente. Las acciones de cancelación y borrado requieren confirmación y la versión vigente. Borrar/cancelar no retira mensajes ya enviados de WhatsApp. Una cita con envío en curso no se puede modificar ni borrar. Viewers solo consultan.
+
+Para habilitar **Eliminar cita**, ejecutar íntegramente `supabase/migrations/063_service_agenda_delete.sql` después de la 062, antes del despliegue aprobado. La función es exclusiva de `service_role`, valida de nuevo al actor y la cuenta, bloquea la fila y comprueba la versión y el estado del envío; no concede borrado directo a usuarios autenticados. La nueva ruta DELETE usa la misma sesión, rol mínimo y comprobación de origen que las ediciones. La actualización no requiere otra APK.
 
 La referencia de unidad se introduce manualmente en esta etapa. No sincroniza ni modifica todavía las unidades o el historial del panel WordPress. El kilometraje es una lectura manual; no calcula automáticamente los kilómetros recorridos ni agenda el próximo servicio por kilometraje.
 
