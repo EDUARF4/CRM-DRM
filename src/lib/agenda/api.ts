@@ -39,7 +39,7 @@ export function agendaDatabaseError(error: {
     AGENDA_AGENT: 'El responsable ya no está disponible en este equipo.',
     AGENDA_CONTACT: 'El contacto ya no está disponible.',
     AGENDA_SENDING:
-      'Se está enviando el aviso de esta cita. Intenta editarla de nuevo en unos momentos.',
+      'Se está enviando el aviso de esta cita. Espera a que termine antes de modificarla o eliminarla.',
     AGENDA_CONSENT: 'Falta la autorización del cliente para enviar el aviso.',
     AGENDA_FORBIDDEN: 'Tu cuenta no puede modificar esta agenda.',
   };
@@ -54,7 +54,7 @@ export function agendaDatabaseError(error: {
   return NextResponse.json(
     {
       error:
-        'No se pudo guardar la cita. Revisa que la actualización de agenda esté instalada en Supabase.',
+        'No se pudo actualizar la agenda. Revisa que su actualización esté instalada en Supabase.',
     },
     { status: 500 }
   );
